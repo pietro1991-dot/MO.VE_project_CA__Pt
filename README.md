@@ -202,7 +202,29 @@ Per dettagli completi, vedere [FLUSSO_OPERATIVO_MOVE.md](FLUSSO_OPERATIVO_MOVE.m
 
 ---
 
-## 📦 Installazione Completa
+## � Documentazione e Guide
+
+### 📋 Flusso Operativo
+| Formato | Link |
+|---------|------|
+| 📄 **PDF** (stampabile) | [Flusso di Lavoro.pdf](Flusso%20di%20Lavoro.pdf) |
+| 📝 **Markdown** (dettagliato) | [FLUSSO_OPERATIVO_MOVE.md](FLUSSO_OPERATIVO_MOVE.md) |
+| 🖼️ **Immagine** (schema visivo) | [flusso di lavoro.png](flusso%20di%20lavoro.png) |
+
+### 🧺 Lavanderia Bot
+| Guida | Descrizione |
+|-------|-------------|
+| [📖 Guida Utente](Lavanderia_Bot_MOVE/GUIDA_UTENTE.md) | Come usare il bot per generare report giornalieri |
+
+### 🧹 Pulizie Bot
+| Guida | Descrizione |
+|-------|-------------|
+| [📖 Guida Operatore](Pulizie_BOT_MOVE/GUIDA_OPERATORE.md) | Per gli operatori: turni, segnalazioni, allegati |
+| [📖 Guida Admin](Pulizie_BOT_MOVE/GUIDA_ADMIN.md) | Per amministratori: gestione turni, report, utenti |
+
+---
+
+## �📦 Installazione Completa
 
 ### Prerequisiti
 - Python 3.9 o superiore
