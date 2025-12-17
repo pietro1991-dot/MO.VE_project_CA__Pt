@@ -1,6 +1,6 @@
 # ========================================
 # MO.VE PROPERTY MANAGEMENT - GITIGNORE ROOT
-# Repository PRIVATA - Database INCLUSI
+# Repository PRIVATA - Database CONDIVISO
 # ========================================
 
 # Python
@@ -42,13 +42,13 @@ ENV/
 **/pdf_output/*.pdf
 
 # Backup database (ridondanti)
-**/Database/backups/
+Database/backups/
 
 # ========================================
 # DATABASE EXCEL - INCLUSI! (repo privata)
 # ========================================
 # NON escludiamo Database/*.xlsx
-# I database sono versionati
+# I database sono versionati e condivisi tra i bot
 
 # ========================================
 # FILE TEMPORANEI

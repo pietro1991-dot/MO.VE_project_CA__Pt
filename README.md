@@ -22,59 +22,50 @@ Questa repository contiene due bot Telegram complementari per la gestione comple
 ## 📁 Struttura Repository
 
 ```
-MO.VE/
+MO.VE_project/
+├── 📄 .gitignore                     # Gitignore unico (root)
 ├── 📄 README.md                      # Questo file
 ├── 📄 FLUSSO_OPERATIVO_MOVE.md       # Documentazione flusso operativo
 ├── 📄 dipendenti.xlsx                # Lista dipendenti
-├── 📄 Flusso di Lavoro.pdf           # Diagramma flusso (PDF)
-├── 📄 flusso di lavoro.png           # Diagramma flusso (immagine)
+│
+├── 📁 Database/                      # 🗄️ DATABASE CONDIVISO
+│   ├── appartamenti.xlsx             # Anagrafica appartamenti (con fogli Magazzini, Macchine caffè)
+│   ├── users.xlsx                    # Utenti registrati
+│   ├── turni.xlsx                    # Storico turni pulizie
+│   ├── richieste_prodotti.xlsx       # Segnalazioni materiali mancanti
+│   ├── tipologie_contratti.xlsx      # Tipologie contratti
+│   ├── materiali_pulizie_appartamenti.xlsx  # Materiali per appartamento
+│   ├── Regole/
+│   │   └── regole_materiali.xlsx     # Regole calcolo materiali
+│   └── backups/                      # Backup automatici
 │
 ├── 🧺 Lavanderia_Bot_MOVE/           # Bot per report lavanderia
-│   ├── .gitignore
+│   ├── bot.py                        # Entry point
 │   ├── requirements.txt
-│   ├── GUIDA_UTENTE.md               # Documentazione utente
+│   ├── GUIDA_UTENTE.md
 │   ├── Config/                       # Configurazioni (API keys, token)
-│   ├── Database/
-│   │   ├── appartamenti.xlsx         # Database appartamenti
-│   │   ├── tipologie_contratti.xlsx  # Tipologie contratti
-│   │   └── Regole/
-│   │       └── regole_materiali.xlsx # Regole calcolo materiali
-│   └── Telegram/                     # Codice bot principale
-│       ├── telegram_bot.py           # Entry point
-│       ├── Funzioni/                 # Moduli elaborazione
-│       │   ├── elabora_giro_giornaliero.py
-│       │   ├── gpt_pdf_parser.py
-│       │   └── route_optimizer.py
-│       ├── logs/                     # Log elaborazioni
-│       ├── pdf_input/                # PDF ricevuti
-│       └── pdf_output/               # Report generati
+│   ├── funzioni/                     # Moduli elaborazione
+│   │   ├── elabora_giro_giornaliero.py
+│   │   ├── gpt_pdf_parser.py
+│   │   └── route_optimizer.py
+│   ├── logs/                         # Log elaborazioni
+│   ├── pdf_input/                    # PDF ricevuti
+│   └── pdf_output/                   # Report generati
 │
 └── 🧹 Pulizie_BOT_MOVE/              # Bot per gestione turni
-    ├── requirements.txt
     ├── bot.py                        # Entry point
-    ├── GUIDA_OPERATORE.md            # Guida per operatori
-    ├── GUIDA_ADMIN.md                # Guida per amministratori
+    ├── requirements.txt
+    ├── GUIDA_OPERATORE.md
+    ├── GUIDA_ADMIN.md
     ├── Config/                       # Configurazioni
-    ├── Database/
-    │   ├── appartamenti.xlsx         # Database appartamenti
-    │   ├── users.xlsx                # Utenti registrati
-    │   ├── turni.xlsx                # Storico turni
-    │   ├── richieste_prodotti.xlsx   # Segnalazioni materiali mancanti
-    │   ├── materieli_pulizie e appartamenti.xlsx  # Materiali per appartamento
-    │   └── backups/                  # Backup automatici
     ├── funzioni/                     # Moduli Python
-    │   ├── __init__.py
-    │   ├── admin_handlers.py         # Handler pannello admin
-    │   ├── user_handlers.py          # Handler utenti/operatori
-    │   ├── database.py               # Gestione database Excel
-    │   ├── video_handler.py          # Download e salvataggio video
-    │   ├── allegati_handler.py       # Gestione foto/documenti/note
-    │   ├── google_maps_helper.py     # Integrazione Google Maps
-    │   ├── config.py                 # Configurazioni e costanti
-    │   └── utils.py                  # Utility varie
+    │   ├── admin_handlers.py
+    │   ├── user_handlers.py
+    │   ├── database.py
+    │   ├── video_handler.py
+    │   ├── allegati_handler.py
+    │   └── ...
     ├── archivio/                     # Video e allegati salvati
-    │   ├── video/                    # Video turni
-    │   └── allegati/                 # Foto, documenti
     ├── exports/                      # Export Excel
     └── logs/                         # Log operazioni
 ```
@@ -100,9 +91,9 @@ MO.VE/
 
 ### Avvio
 ```bash
-cd Lavanderia_Bot_MOVE/Telegram
-pip install -r ../requirements.txt
-python telegram_bot.py
+cd Lavanderia_Bot_MOVE
+pip install -r requirements.txt
+python bot.py
 ```
 
 ### Documentazione
@@ -239,8 +230,8 @@ pip install -r requirements.txt
 5. **Avvia i bot**
 ```bash
 # Terminal 1 - Lavanderia Bot
-cd Lavanderia_Bot_MOVE/Telegram
-python telegram_bot.py
+cd Lavanderia_Bot_MOVE
+python bot.py
 
 # Terminal 2 - Pulizie Bot
 cd Pulizie_BOT_MOVE
@@ -292,7 +283,7 @@ Database/backups/
 
 ### PDF non elaborato
 1. Verifica che sia un PDF valido da Ciao Booking
-2. Controlla i log in `Telegram/logs/`
+2. Controlla i log in `Lavanderia_Bot_MOVE/logs/`
 3. Verifica la chiave OpenAI
 
 ### Database bloccato
