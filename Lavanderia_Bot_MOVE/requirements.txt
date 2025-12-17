@@ -1,0 +1,21 @@
+# Requirements per Bot Telegram Lavanderia
+# Installa con: pip install -r requirements.txt
+
+# Bot Telegram
+python-telegram-bot>=20.0
+
+# OpenAI GPT API (parsing PDF)
+openai>=1.0.0
+
+# Generazione PDF
+reportlab>=4.0.0
+
+# Parsing e manipolazione PDF
+PyPDF2>=3.0.0
+
+# Dati e Excel
+pandas>=2.0.0
+openpyxl>=3.0.0
+
+# HTTP requests (Google Maps API)
+requests>=2.28.0

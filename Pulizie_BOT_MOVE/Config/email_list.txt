@@ -1,0 +1,6 @@
+# LISTA EMAIL DIPENDENTI
+# Un indirizzo email per riga
+# Linee che iniziano con # sono commenti
+
+giacobazzipietro@gmail.com
+
