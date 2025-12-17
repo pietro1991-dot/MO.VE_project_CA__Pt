@@ -1,0 +1,73 @@
+# ========================================
+# MO.VE PROPERTY MANAGEMENT - GITIGNORE ROOT
+# Repository PRIVATA - Database INCLUSI
+# ========================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# ========================================
+# CREDENZIALI SENSIBILI - MAI COMMITTARE!
+# ========================================
+**/Config/telegram_bot_token.txt
+**/Config/gpt_api_key.txt
+**/Config/google_maps_api_key.txt
+**/Config/gmail_config.txt
+
+# ========================================
+# FILE OPERATIVI TEMPORANEI
+# ========================================
+# Log (troppo grandi)
+**/logs/*.txt
+**/logs/*.log
+
+# Archivio video e allegati (troppo pesanti)
+**/archivio/video/
+**/archivio/allegati/
+
+# Export temporanei
+**/exports/*.xlsx
+
+# PDF input/output (file temporanei)
+**/pdf_input/*.pdf
+**/pdf_input/*.txt
+**/pdf_input/pdf_to_txt_input/
+**/pdf_output/*.pdf
+
+# Backup database (ridondanti)
+**/Database/backups/
+
+# ========================================
+# DATABASE EXCEL - INCLUSI! (repo privata)
+# ========================================
+# NON escludiamo Database/*.xlsx
+# I database sono versionati
+
+# ========================================
+# FILE TEMPORANEI
+# ========================================
+*.tmp
+*.bak
+*.lock
+temp_telegram/
+
+# Debug
+google_maps_response_debug.json
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# ========================================
+# CONFIG INCLUSI (non sensibili):
+# - gpt_prompts.json (prompts GPT)
+# - email_list.txt (lista email)
+# - admin_telegram_id.txt (ID admin)
+# ========================================
