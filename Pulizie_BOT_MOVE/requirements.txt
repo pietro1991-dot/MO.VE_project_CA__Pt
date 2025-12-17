@@ -1,8 +1,8 @@
 # Bot Telegram Gestione Pulizie
 # Requirements / Dipendenze
 
-# Telegram Bot
-python-telegram-bot==20.7
+# Telegram Bot (v22+ richiesta per Python 3.14)
+python-telegram-bot>=22.0
 
 # HTTP Requests (per Google Maps API)
 requests==2.31.0

@@ -26,15 +26,16 @@ MO.VE_project/
 ├── 📄 .gitignore                     # Gitignore unico (root)
 ├── 📄 README.md                      # Questo file
 ├── 📄 FLUSSO_OPERATIVO_MOVE.md       # Documentazione flusso operativo
-├── 📄 dipendenti.xlsx                # Lista dipendenti
+├── 📄 start_lavanderia.bat           # Script avvio Lavanderia Bot (Windows)
+├── 📄 start_pulizie.bat              # Script avvio Pulizie Bot (Windows)
 │
 ├── 📁 Database/                      # 🗄️ DATABASE CONDIVISO
 │   ├── appartamenti.xlsx             # Anagrafica appartamenti (con fogli Magazzini, Macchine caffè)
 │   ├── users.xlsx                    # Utenti registrati
 │   ├── turni.xlsx                    # Storico turni pulizie
-│   ├── richieste_prodotti.xlsx       # Segnalazioni materiali mancanti
-│   ├── tipologie_contratti.xlsx      # Tipologie contratti
-│   ├── materiali_pulizie_appartamenti.xlsx  # Materiali per appartamento
+│   ├── richieste_prodotti.xlsx             # Segnalazioni materiali mancanti
+│   ├── tipologie_contratti.xlsx            # Tipologie contratti
+│   ├── materiali_pulizie_appartamenti.xlsx # Materiali segnalabili (pulizie + appartamento)
 │   ├── Regole/
 │   │   └── regole_materiali.xlsx     # Regole calcolo materiali
 │   └── backups/                      # Backup automatici
@@ -89,12 +90,15 @@ MO.VE_project/
 - ReportLab (generazione PDF)
 - Pandas + OpenPyXL
 
-### Avvio
+### Avvio (Manuale)
 ```bash
 cd Lavanderia_Bot_MOVE
 pip install -r requirements.txt
 python bot.py
 ```
+
+### Avvio Rapido (Windows)
+Doppio click su `start_lavanderia.bat` dalla root del progetto.
 
 ### Documentazione
 - [📖 Guida Utente](Lavanderia_Bot_MOVE/GUIDA_UTENTE.md)
@@ -118,12 +122,15 @@ python bot.py
 - FileLock (gestione concorrenza)
 - Geopy (calcoli geolocalizzazione)
 
-### Avvio
+### Avvio (Manuale)
 ```bash
 cd Pulizie_BOT_MOVE
 pip install -r requirements.txt
 python bot.py
 ```
+
+### Avvio Rapido (Windows)
+Doppio click su `start_pulizie.bat` dalla root del progetto.
 
 ### Documentazione
 - [📖 Guida Operatore](Pulizie_BOT_MOVE/GUIDA_OPERATORE.md)
@@ -228,6 +235,14 @@ pip install -r requirements.txt
 - Inserisci i token e le chiavi API
 
 5. **Avvia i bot**
+
+**Opzione A - Script automatici (Windows):**
+```
+start_lavanderia.bat   # Doppio click per avviare Lavanderia Bot
+start_pulizie.bat      # Doppio click per avviare Pulizie Bot
+```
+
+**Opzione B - Manuale:**
 ```bash
 # Terminal 1 - Lavanderia Bot
 cd Lavanderia_Bot_MOVE

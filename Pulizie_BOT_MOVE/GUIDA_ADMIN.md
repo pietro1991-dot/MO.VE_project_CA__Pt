@@ -126,19 +126,20 @@ Panoramica generale del sistema:
 ## 📂 Struttura File
 
 ### Database Excel
-Tutti i dati sono salvati in file Excel nella cartella `Database/`:
+Tutti i dati sono salvati in file Excel nella cartella condivisa `../Database/` (root del progetto):
 
 | File | Contenuto |
 |------|-----------|
 | `users.xlsx` | Utenti registrati |
 | `turni.xlsx` | Storico turni |
 | `richieste_prodotti.xlsx` | Richieste materiali |
-| `appartamenti.xlsx` | Lista appartamenti |
-| `materiali_pulizie e appartamenti.xlsx` | Liste materiali segnalabili |
+| `appartamenti.xlsx` | Lista appartamenti (condiviso con Lavanderia Bot) |
+| `materiali_pulizie_appartamenti.xlsx` | Liste materiali segnalabili |
+| `Regole/regole_materiali.xlsx` | Regole calcolo materiali |
 
 ### Backup Automatici
 - I backup vengono creati automaticamente all'avvio del bot
-- Salvati in `Database/backups/`
+- Salvati in `../Database/backups/`
 - Mantenuti per 30 giorni, poi eliminati automaticamente
 
 ### Video e Allegati
@@ -197,7 +198,7 @@ Per aggiungere un nuovo appartamento:
 
 ## 📋 Gestione Materiali
 
-I materiali segnalabili sono nel file `Database/materiali_pulizie e appartamenti.xlsx`:
+I materiali segnalabili sono nel file `Database/materiali_pulizie_appartamenti.xlsx`:
 
 ### Foglio "materiali_pulizie"
 Lista materiali per le pulizie (detersivi, panni, ecc.)
@@ -214,16 +215,21 @@ Per modificare le liste:
 
 ## 🔄 Avvio e Riavvio Bot
 
-### Avvio
+### Avvio Rapido (Windows)
+Doppio click su `start_pulizie.bat` dalla root del progetto.
+Lo script installa automaticamente i requirements e avvia il bot.
+
+### Avvio Manuale
 ```bash
 cd Pulizie_BOT_MOVE
+pip install -r requirements.txt
 python bot.py
 ```
 
 ### Riavvio
 1. Premi `Ctrl+C` nel terminale
 2. Attendi il messaggio "Application.stop() complete"
-3. Riavvia con `python bot.py`
+3. Riavvia con `python bot.py` oppure usa `start_pulizie.bat`
 
 ### Problemi Comuni
 

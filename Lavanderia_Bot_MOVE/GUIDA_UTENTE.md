@@ -206,11 +206,14 @@ Il sistema usa diversi file di configurazione nella cartella `Config/`:
 | `gpt_prompts.json` | Prompts per l'analisi GPT |
 
 ### File Regole Materiali
-Nella cartella `Database/Regole/`:
+Nella cartella condivisa `../Database/Regole/` (root del progetto):
 
 | File | Descrizione |
 |------|-------------|
 | `regole_materiali.xlsx` | Regole calcolo materiali (bagno + cucina) |
+
+### Database Appartamenti
+Il file `../Database/appartamenti.xlsx` contiene l'anagrafica degli appartamenti (condiviso con Pulizie Bot).
 
 #### Struttura regole_materiali.xlsx
 
@@ -238,7 +241,7 @@ Nella cartella `Database/Regole/`:
 ### Il bot non risponde
 1. Verifica che il bot sia in esecuzione
 2. Controlla il file `telegram_bot_token.txt`
-3. Riavvia il bot con `python bot.py`
+3. Riavvia il bot con `python bot.py` oppure usa `start_lavanderia.bat` dalla root del progetto
 
 ### PDF non elaborato correttamente
 1. Verifica che il PDF sia un export valido da Ciao Booking
@@ -279,5 +282,5 @@ Per problemi tecnici o modifiche al sistema, contattare l'amministratore.
 
 ---
 
-*Guida aggiornata: Dicembre 2024*
+*Guida aggiornata: Dicembre 2025*
 *Bot Lavanderia MO.VE - Versione 1.0*

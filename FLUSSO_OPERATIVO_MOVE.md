@@ -222,4 +222,4 @@ PULIZIA APPARTAMENTO                    LAVAGGIO E STOCCAGGIO
 ---
 
 *Documento generato dal diagramma Lucidspark MO.VE*
-*Ultimo aggiornamento: Dicembre 2024*
+*Ultimo aggiornamento: Dicembre 2025*
