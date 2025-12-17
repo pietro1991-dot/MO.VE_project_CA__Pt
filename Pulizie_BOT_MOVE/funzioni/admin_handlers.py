@@ -18,7 +18,7 @@ from .utils import (
 )
 from .video_handler import send_video_by_file_id, list_videos_by_date, get_storage_stats
 from .config import ADMIN_TELEGRAM_ID, is_admin
-from .utils import format_ora
+from .user_handlers import get_main_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -317,66 +317,150 @@ async def admin_turni_finiti(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ==================== RICHIESTE PRODOTTI ====================
 
 async def mostra_richieste_in_sospeso(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler per pulsante 'Richieste in Sospeso' - accessibile solo da admin"""
+    """Handler per pulsante 'Richieste in Sospeso' - accessibile solo da admin
+    
+    NUOVO: Invia un messaggio separato per ogni richiesta con pulsante sotto,
+    così è chiaro quale pulsante corrisponde a quale richiesta.
+    """
     user_id = update.effective_user.id
     
     if not is_admin(user_id):
-        await update.message.reply_text("❌ Non hai i permessi per questa funzione")
+        await update.message.reply_text(
+            "❌ Non hai i permessi per questa funzione",
+            reply_markup=get_main_keyboard(user_id)
+        )
         return
     
     richieste = db.get_richieste_non_completate()
-    
-    keyboard = []
     
     if not richieste:
         text = "📋 *RICHIESTE IN SOSPESO*\n\n"
         text += "✅ Nessuna richiesta in sospeso!\n\n"
         text += "_Tutte le richieste sono state completate._"
-    else:
-        text = f"📋 *RICHIESTE IN SOSPESO* ({len(richieste)})\n\n"
+        await update.message.reply_text(
+            text, 
+            parse_mode='Markdown',
+            reply_markup=get_main_keyboard(user_id)
+        )
+        return
+    
+    # Header iniziale
+    header = f"📋 *RICHIESTE IN SOSPESO* ({len(richieste)})\n\n"
+    header += "_Ogni richiesta ha il suo pulsante ✅ sotto per completarla:_"
+    await update.message.reply_text(header, parse_mode='Markdown')
+    
+    # Invia un messaggio per ogni richiesta con il suo pulsante
+    for r in richieste:
+        dt = datetime.fromisoformat(r['data_richiesta'])
+        tipo = r.get('tipo_richiesta', 'generico')
+        info_consegna = r.get('info_consegna', '')
         
-        for r in richieste:
-            dt = datetime.fromisoformat(r['data_richiesta'])
-            tipo = r.get('tipo_richiesta', 'generico')
-            info_consegna = r.get('info_consegna', '')
-            
-            # Emoji in base al tipo
-            if tipo == 'pulizie':
-                emoji = "🧹"
-                tipo_text = "Materiale Pulizie"
-            elif tipo == 'appartamento':
-                emoji = "🏠"
-                tipo_text = "Manca Appartamento"
-            else:
-                emoji = "📦"
-                tipo_text = "Richiesta"
-            
-            text += f"{emoji} *{tipo_text}*\n"
-            text += f"👤 {r['nome']} {r['cognome']}\n"
-            text += f"🏠 {r['appartamento_nome']}\n"
-            text += f"📦 {r['descrizione_prodotti']}\n"
-            
-            if info_consegna:
-                text += f"📝 Info: {info_consegna}\n"
-            
-            text += f"📅 {format_ora(dt)}\n"
-            text += "─" * 20 + "\n\n"
-            
-            # Bottone per completare (mostra tipo + descrizione abbreviata)
-            label = f"✅ {tipo_text[:10]} - {r['descrizione_prodotti'][:25]}..."
-            keyboard.append([
-                InlineKeyboardButton(label, callback_data=f"completa_{r['id']}")
-            ])
+        # Emoji in base al tipo
+        if tipo == 'pulizie':
+            emoji = "🧹"
+            tipo_text = "Materiale Pulizie"
+        elif tipo == 'appartamento':
+            emoji = "🏠"
+            tipo_text = "Manca Appartamento"
+        else:
+            emoji = "📦"
+            tipo_text = "Richiesta"
+        
+        text = f"{emoji} *{tipo_text}*\n"
+        text += f"👤 {r['nome']} {r['cognome']}\n"
+        text += f"🏠 {r['appartamento_nome']}\n"
+        text += f"📦 {r['descrizione_prodotti']}\n"
+        
+        if info_consegna:
+            text += f"📝 Info: {info_consegna}\n"
+        
+        text += f"📅 {format_ora(dt)}"
+        
+        # Pulsante sotto questa specifica richiesta
+        keyboard = [[InlineKeyboardButton("✅ Segna come completata", callback_data=f"completa_{r['id']}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
     
-    keyboard.append([InlineKeyboardButton("🔄 Aggiorna lista", callback_data="richieste_aggiorna")])
+    # Messaggio finale con pulsante aggiorna
+    footer_keyboard = [[InlineKeyboardButton("🔄 Aggiorna lista", callback_data="richieste_aggiorna_full")]]
+    await update.message.reply_text(
+        "─" * 20 + "\n_Premi 🔄 per ricaricare tutte le richieste_",
+        reply_markup=InlineKeyboardMarkup(footer_keyboard),
+        parse_mode='Markdown'
+    )
+
+
+async def aggiorna_richieste_full_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Callback per ricaricare tutte le richieste (invia nuovi messaggi)"""
+    query = update.callback_query
+    await query.answer("🔄 Ricarico richieste...")
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    if not is_admin(update.effective_user.id):
+        return
     
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    # Cancella il messaggio con il pulsante aggiorna
+    try:
+        await query.message.delete()
+    except:
+        pass
+    
+    richieste = db.get_richieste_non_completate()
+    
+    if not richieste:
+        text = "📋 *RICHIESTE IN SOSPESO*\n\n"
+        text += "✅ Nessuna richiesta in sospeso!\n\n"
+        text += "_Tutte le richieste sono state completate._"
+        await query.message.chat.send_message(text, parse_mode='Markdown')
+        return
+    
+    # Header iniziale
+    header = f"📋 *RICHIESTE IN SOSPESO* ({len(richieste)})\n\n"
+    header += "_Ogni richiesta ha il suo pulsante ✅ sotto per completarla:_"
+    await query.message.chat.send_message(header, parse_mode='Markdown')
+    
+    # Invia un messaggio per ogni richiesta con il suo pulsante
+    for r in richieste:
+        dt = datetime.fromisoformat(r['data_richiesta'])
+        tipo = r.get('tipo_richiesta', 'generico')
+        info_consegna = r.get('info_consegna', '')
+        
+        if tipo == 'pulizie':
+            emoji = "🧹"
+            tipo_text = "Materiale Pulizie"
+        elif tipo == 'appartamento':
+            emoji = "🏠"
+            tipo_text = "Manca Appartamento"
+        else:
+            emoji = "📦"
+            tipo_text = "Richiesta"
+        
+        text = f"{emoji} *{tipo_text}*\n"
+        text += f"👤 {r['nome']} {r['cognome']}\n"
+        text += f"🏠 {r['appartamento_nome']}\n"
+        text += f"📦 {r['descrizione_prodotti']}\n"
+        
+        if info_consegna:
+            text += f"📝 Info: {info_consegna}\n"
+        
+        text += f"📅 {format_ora(dt)}"
+        
+        keyboard = [[InlineKeyboardButton("✅ Segna come completata", callback_data=f"completa_{r['id']}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.message.chat.send_message(text, reply_markup=reply_markup, parse_mode='Markdown')
+    
+    # Footer con pulsante aggiorna
+    footer_keyboard = [[InlineKeyboardButton("🔄 Aggiorna lista", callback_data="richieste_aggiorna_full")]]
+    await query.message.chat.send_message(
+        "─" * 20 + "\n_Premi 🔄 per ricaricare tutte le richieste_",
+        reply_markup=InlineKeyboardMarkup(footer_keyboard),
+        parse_mode='Markdown'
+    )
 
 
 async def aggiorna_richieste_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Callback per aggiornare lista richieste in sospeso"""
+    """Callback per aggiornare lista richieste in sospeso (vecchio stile - manteniamo per compatibilità)"""
     query = update.callback_query
     await query.answer("🔄 Aggiornamento...")
     
@@ -498,7 +582,7 @@ async def admin_richieste_prodotti(update: Update, context: ContextTypes.DEFAULT
 
 
 async def completa_richiesta(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Segna richiesta come completata e aggiorna messaggio con strikethrough"""
+    """Segna richiesta come completata e aggiorna il messaggio singolo"""
     query = update.callback_query
     
     if not is_admin(update.effective_user.id):
@@ -517,26 +601,36 @@ async def completa_richiesta(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         await query.answer("✅ Richiesta completata!")
         
-        # Aggiorna messaggio corrente con strikethrough (se message_id disponibile)
+        # Aggiorna il messaggio corrente per mostrare che è completato
         try:
-            if richiesta.get('message_id'):
-                updated_text = (
-                    f"~~✅ COMPLETATO~~\n\n"
-                    f"👤 {richiesta['user_nome_completo']}\n"
-                    f"🏠 {richiesta['appartamento_nome']}\n"
-                    f"📦 ~~{richiesta['descrizione_prodotti']}~~\n"
-                    f"📅 {richiesta['data_richiesta']}"
-                )
-                await context.bot.edit_message_text(
-                    chat_id=query.message.chat_id,
-                    message_id=richiesta['message_id'],
-                    text=updated_text,
-                    parse_mode='Markdown'
-                )
+            tipo = richiesta.get('tipo_richiesta', 'generico')
+            if tipo == 'pulizie':
+                emoji = "🧹"
+                tipo_text = "Materiale Pulizie"
+            elif tipo == 'appartamento':
+                emoji = "🏠"
+                tipo_text = "Manca Appartamento"
+            else:
+                emoji = "📦"
+                tipo_text = "Richiesta"
+            
+            # Messaggio aggiornato con strikethrough
+            updated_text = f"✅ *COMPLETATO*\n\n"
+            updated_text += f"~{emoji} {tipo_text}~\n"
+            updated_text += f"~👤 {richiesta['nome']} {richiesta['cognome']}~\n"
+            updated_text += f"~🏠 {richiesta['appartamento_nome']}~\n"
+            updated_text += f"~📦 {richiesta['descrizione_prodotti']}~"
+            
+            # Rimuove il pulsante e aggiorna il testo
+            await query.edit_message_text(
+                text=updated_text,
+                parse_mode='Markdown',
+                reply_markup=None  # Rimuove il pulsante
+            )
         except Exception as e:
             logger.error(f"Errore aggiornamento messaggio: {e}")
         
-        # Notifica l'utente
+        # Notifica l'utente che ha fatto la richiesta
         try:
             await context.bot.send_message(
                 chat_id=richiesta['telegram_id'],
@@ -550,9 +644,6 @@ async def completa_richiesta(update: Update, context: ContextTypes.DEFAULT_TYPE)
             logger.error(f"Errore notifica utente: {e}")
         
         logger.info(f"Richiesta {richiesta_id} completata dall'admin")
-        
-        # Aggiorna lista richieste
-        await admin_richieste_prodotti(update, context)
     else:
         await query.answer("❌ Richiesta non trovata")
 
@@ -1008,6 +1099,10 @@ async def admin_callback_router(update: Update, context: ContextTypes.DEFAULT_TY
         await completa_richiesta(update, context)
     elif data == "admin_pulisci_richieste":
         await pulisci_richieste_completate(update, context)
+    elif data == "richieste_aggiorna":
+        await aggiorna_richieste_callback(update, context)
+    elif data == "richieste_aggiorna_full":
+        await aggiorna_richieste_full_callback(update, context)
     
     # Report
     elif data == "admin_report":

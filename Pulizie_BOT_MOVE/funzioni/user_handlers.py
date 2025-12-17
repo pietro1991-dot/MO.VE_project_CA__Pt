@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
 
 from . import database as db
@@ -122,15 +122,8 @@ async def registrazione_nome(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 # ==================== MENU PRINCIPALE ====================
 
-async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict):
-    """Mostra menu principale con tastiera personalizzata"""
-    user_id = user['telegram_id']
-    nome = user['nome']
-    
-    # Verifica se ha turno in corso
-    turno_in_corso = db.get_turno_in_corso(user_id)
-    
-    # Tastiera persistente base
+def get_main_keyboard(user_id: int) -> ReplyKeyboardMarkup:
+    """Restituisce la tastiera del menu principale"""
     keyboard = [
         [KeyboardButton("🏠 Inizia Appartamento")],
         [KeyboardButton("✅ Finischi Appartamento")],
@@ -144,7 +137,19 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         keyboard.append([KeyboardButton("📋 Richieste in Sospeso")])
         keyboard.append([KeyboardButton("🔄 Turni in Corso"), KeyboardButton("✅ Turni Finiti")])
     
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, is_persistent=True)
+
+
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, user: dict):
+    """Mostra menu principale con tastiera personalizzata"""
+    user_id = user['telegram_id']
+    nome = user['nome']
+    
+    # Verifica se ha turno in corso
+    turno_in_corso = db.get_turno_in_corso(user_id)
+    
+    # Usa la funzione helper per la tastiera
+    reply_markup = get_main_keyboard(user_id)
     
     if turno_in_corso:
         # Ha un turno aperto
@@ -178,19 +183,17 @@ async def seleziona_appartamento(update: Update, context: ContextTypes.DEFAULT_T
     
     user = db.get_user(update.effective_user.id)
     
-    # Chiedi posizione o mostra tutti
+    # Chiedi posizione o cerca (senza mostra tutti per evitare troppi pulsanti)
     keyboard = [
         [InlineKeyboardButton("📱 Condividi posizione GPS", callback_data="chiedi_gps")],
-        [InlineKeyboardButton("🔍 Cerca per nome/indirizzo", callback_data="cerca_appartamento")],
-        [InlineKeyboardButton("📋 Mostra tutti gli appartamenti", callback_data="mostra_tutti")]
+        [InlineKeyboardButton("🔍 Cerca per nome/indirizzo", callback_data="cerca_appartamento")]
     ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     text = ("📍 *Come vuoi selezionare l'appartamento?*\n\n"
-            "• Usa il GPS per vedere quelli vicini\n"
-            "• Cerca per nome o indirizzo\n"
-            "• Visualizza l'elenco completo")
+            "• Usa il GPS per vedere quelli vicini (300 m)\n"
+            "• Cerca per nome o indirizzo")
     
     if query:
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
@@ -244,24 +247,38 @@ async def mostra_appartamenti(update: Update, context: ContextTypes.DEFAULT_TYPE
     if user_location:
         appartamenti_con_distanza.sort(key=lambda x: x['distanza'] if x['distanza'] is not None else float('inf'))
     
-    # Crea keyboard
+    # Crea keyboard - se GPS attivo, mostra solo quelli entro 300m
     keyboard = []
-    text = "📍 *Seleziona l'appartamento:*\n\n"
     
-    for app in appartamenti_con_distanza:
-        label = f"🏠 {app['nome']}"
+    if user_location:
+        # Filtra solo appartamenti entro 300m
+        text = "📍 *Appartamenti vicini (entro 300 m):*\n\n"
         
-        if app['distanza'] is not None:
-            dist_str = format_distanza(app['distanza'])
-            label += f" ({dist_str})"
-            
-            # Evidenzia quelli vicini
-            if app['distanza'] <= GPS_TOLERANCE_METERS:
+        for app in appartamenti_con_distanza[:20]:
+            if app['distanza'] is not None and app['distanza'] <= GPS_TOLERANCE_METERS:
+                dist_str = format_distanza(app['distanza'])
                 label = f"📍 {app['nome']} ({dist_str})"
+                keyboard.append([
+                    InlineKeyboardButton(label, callback_data=f"app_{app['id']}")
+                ])
         
-        keyboard.append([
-            InlineKeyboardButton(label, callback_data=f"app_{app['id']}")
-        ])
+        if not keyboard:
+            # Nessun appartamento vicino - offri ricerca
+            keyboard = [
+                [InlineKeyboardButton("🔍 Cerca appartamento", callback_data="cerca_appartamento")]
+            ]
+            text = "😕 *Nessun appartamento trovato entro 300 m*\n\nUsa la ricerca per trovare l'appartamento:"
+        else:
+            keyboard.append([InlineKeyboardButton("🔍 Cerca", callback_data="cerca_appartamento")])
+    else:
+        # Senza GPS, mostra tutti (questo caso non dovrebbe più verificarsi)
+        text = "📍 *Seleziona l'appartamento:*\n\n"
+        
+        for app in appartamenti_con_distanza:
+            label = f"🏠 {app['nome']}"
+            keyboard.append([
+                InlineKeyboardButton(label, callback_data=f"app_{app['id']}")
+            ])
     
     keyboard.append([InlineKeyboardButton("« Indietro", callback_data="back_menu")])
     
@@ -309,14 +326,17 @@ async def ricevi_posizione(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Salva posizione nel context per uso successivo
     context.user_data['last_location'] = user_location
     
+    # Ripristina la tastiera del menu principale (sostituisce quella GPS)
+    await update.message.reply_text(
+        "✅ Posizione ricevuta! Cerco appartamenti vicini...",
+        reply_markup=get_main_keyboard(update.effective_user.id)
+    )
+    
     # Verifica se è per allegato
     if context.user_data.get('waiting_location_for') == 'allegato':
         context.user_data.pop('waiting_location_for', None)
-        await update.message.reply_text("✅ Posizione ricevuta! Cerco appartamenti vicini...")
         await mostra_appartamenti_per_allegato_gps(update, context, user_location)
         return ConversationHandler.END
-    
-    await update.message.reply_text("✅ Posizione ricevuta! Cerco appartamenti vicini...")
     
     return await mostra_appartamenti(update, context, user_location)
 
@@ -365,7 +385,10 @@ async def ricevi_video_ingresso(update: Update, context: ContextTypes.DEFAULT_TY
     appartamento = context.user_data.get('appartamento_selezionato')
     
     if not appartamento:
-        await update.message.reply_text("❌ Errore: nessun appartamento selezionato")
+        await update.message.reply_text(
+            "❌ Errore: nessun appartamento selezionato",
+            reply_markup=get_main_keyboard(user_id)
+        )
         return ConversationHandler.END
     
     # Verifica che sia un video
@@ -379,7 +402,7 @@ async def ricevi_video_ingresso(update: Update, context: ContextTypes.DEFAULT_TY
     
     try:
         # Scarica e salva video
-        await update.message.reply_text("⏳ Sto salvando il video...")
+        loading_msg = await update.message.reply_text("⏳ Sto salvando il video...")
         
         video_path, video_file_id, timestamp = await download_and_save_video(
             update, context,
@@ -387,6 +410,12 @@ async def ricevi_video_ingresso(update: Update, context: ContextTypes.DEFAULT_TY
             appartamento['nome'],
             'ingresso'
         )
+        
+        # Cancella messaggio di caricamento
+        try:
+            await loading_msg.delete()
+        except:
+            pass
         
         # Crea turno nel database (con gestione turno doppio)
         try:
@@ -508,13 +537,14 @@ async def ricevi_video_uscita(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(
             "❌ *Non hai turni in corso!*\n\n"
             "Prima devi iniziare un turno con '🏠 Inizia Appartamento'",
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            reply_markup=get_main_keyboard(user_id)
         )
         return ConversationHandler.END
     
     try:
         # Scarica e salva video
-        await update.message.reply_text("⏳ Sto salvando il video...")
+        loading_msg = await update.message.reply_text("⏳ Sto salvando il video...")
         
         video_path, video_file_id, timestamp = await download_and_save_video(
             update, context,
@@ -522,6 +552,12 @@ async def ricevi_video_uscita(update: Update, context: ContextTypes.DEFAULT_TYPE
             turno['appartamento_nome'],
             'uscita'
         )
+        
+        # Cancella messaggio di caricamento
+        try:
+            await loading_msg.delete()
+        except:
+            pass
         
         # Completa turno nel database
         ore_lavorate = db.complete_turno(
@@ -619,11 +655,10 @@ async def segnala_prodotti(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Riusa GPS già fornito
             await mostra_appartamenti_per_segnalazione(update, context, last_location)
         else:
-            # Chiedi GPS, ricerca o mostra tutti
+            # Chiedi GPS o ricerca (senza mostra tutti)
             keyboard = [
                 [InlineKeyboardButton("📱 Condividi posizione GPS", callback_data="segnala_chiedi_gps")],
-                [InlineKeyboardButton("🔍 Cerca per nome/indirizzo", callback_data="segnala_cerca_appartamento")],
-                [InlineKeyboardButton("📋 Mostra tutti gli appartamenti", callback_data="segnala_mostra_tutti")]
+                [InlineKeyboardButton("🔍 Cerca per nome/indirizzo", callback_data="segnala_cerca_appartamento")]
             ]
             
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -631,9 +666,8 @@ async def segnala_prodotti(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(
                 "📦 *Cosa manca?*\n\n"
                 "📍 *Come vuoi selezionare l'appartamento?*\n\n"
-                "• Usa il GPS per vedere quelli vicini\n"
-                "• Cerca per nome o indirizzo\n"
-                "• Visualizza l'elenco completo",
+                "• Usa il GPS per vedere quelli vicini (300 m)\n"
+                "• Cerca per nome o indirizzo",
                 reply_markup=reply_markup,
                 parse_mode='Markdown'
             )
@@ -683,23 +717,35 @@ async def mostra_appartamenti_per_segnalazione(update: Update, context: ContextT
     if user_location:
         appartamenti_con_distanza.sort(key=lambda x: x['distanza'] if x['distanza'] is not None else float('inf'))
     
-    # Crea keyboard
+    # Crea keyboard - se GPS attivo, mostra solo quelli entro 300m
     keyboard = []
-    text = "📦 *Cosa manca?*\n\n📍 *Seleziona l'appartamento:*\n\n"
     
-    for app in appartamenti_con_distanza:
-        label = f"🏠 {app['nome']}"
+    if user_location:
+        text = "📦 *Cosa manca?*\n\n📍 *Appartamenti vicini (entro 300 m):*\n\n"
         
-        if app['distanza'] is not None:
-            dist_str = format_distanza(app['distanza'])
-            label += f" ({dist_str})"
-            
-            if app['distanza'] <= GPS_TOLERANCE_METERS:
+        for app in appartamenti_con_distanza[:20]:
+            if app['distanza'] is not None and app['distanza'] <= GPS_TOLERANCE_METERS:
+                dist_str = format_distanza(app['distanza'])
                 label = f"📍 {app['nome']} ({dist_str})"
+                keyboard.append([
+                    InlineKeyboardButton(label, callback_data=f"segnala_app_{app['id']}")
+                ])
         
-        keyboard.append([
-            InlineKeyboardButton(label, callback_data=f"segnala_app_{app['id']}")
-        ])
+        if not keyboard:
+            keyboard = [
+                [InlineKeyboardButton("🔍 Cerca appartamento", callback_data="segnala_cerca_appartamento")]
+            ]
+            text = "📦 *Cosa manca?*\n\n😕 *Nessun appartamento trovato entro 300 m*\n\nUsa la ricerca:"
+        else:
+            keyboard.append([InlineKeyboardButton("🔍 Cerca", callback_data="segnala_cerca_appartamento")])
+    else:
+        text = "📦 *Cosa manca?*\n\n📍 *Seleziona l'appartamento:*\n\n"
+        
+        for app in appartamenti_con_distanza:
+            label = f"🏠 {app['nome']}"
+            keyboard.append([
+                InlineKeyboardButton(label, callback_data=f"segnala_app_{app['id']}")
+            ])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -746,6 +792,12 @@ async def segnala_ricevi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Salva per usi futuri
     context.user_data['last_location'] = user_location
     context.user_data.pop('segnala_attende_gps', None)
+    
+    # Ripristina la tastiera del menu principale (sostituisce quella GPS)
+    await update.message.reply_text(
+        "✅ Posizione ricevuta! Cerco appartamenti vicini...",
+        reply_markup=get_main_keyboard(update.effective_user.id)
+    )
     
     await mostra_appartamenti_per_segnalazione(update, context, user_location)
     
@@ -803,7 +855,10 @@ async def ricevi_segnalazione(update: Update, context: ContextTypes.DEFAULT_TYPE
         appartamento = db.get_appartamento(appartamento_id)
         appartamento_nome = appartamento['nome']
     else:
-        await update.message.reply_text("❌ Errore: appartamento non trovato")
+        await update.message.reply_text(
+            "❌ Errore: appartamento non trovato",
+            reply_markup=get_main_keyboard(user_id)
+        )
         return ConversationHandler.END
     
     # Crea richiesta (con gestione errori di validazione)
@@ -818,7 +873,8 @@ async def ricevi_segnalazione(update: Update, context: ContextTypes.DEFAULT_TYPE
         if richiesta_id == 0:
             await update.message.reply_text(
                 "❌ Errore durante la creazione della richiesta. Riprova.",
-                parse_mode='Markdown'
+                parse_mode='Markdown',
+                reply_markup=get_main_keyboard(user_id)
             )
             return ConversationHandler.END
     
@@ -1002,23 +1058,16 @@ async def manca_pulizie_scegli_appartamento(update: Update, context: ContextType
     """Mostra lista appartamenti per scegliere dove consegnare (da callback)"""
     query = update.callback_query
     
+    # Pulsanti GPS e cerca
     keyboard = [
-        [InlineKeyboardButton("🔍 Cerca per nome/indirizzo", callback_data="matpul_cerca_app")]
+        [InlineKeyboardButton("📱 Condividi posizione GPS", callback_data="matpul_chiedi_gps")],
+        [InlineKeyboardButton("🔍 Cerca appartamento", callback_data="matpul_cerca_app")]
     ]
-    
-    # Aggiungi primi appartamenti
-    appartamenti = db.get_all_appartamenti()
-    for app in appartamenti[:10]:
-        keyboard.append([
-            InlineKeyboardButton(f"🏠 {app['nome']}", callback_data=f"matpul_app_{app['id']}")
-        ])
-    
-    if len(appartamenti) > 10:
-        keyboard.append([InlineKeyboardButton("📋 Mostra tutti", callback_data="matpul_mostra_tutti_app")])
     
     await query.edit_message_text(
         "📍 *Dove vuoi ricevere i materiali?*\n\n"
-        "Scegli l'appartamento dove farti consegnare il materiale:",
+        "• Usa il GPS per vedere quelli vicini (300 m)\n"
+        "• Cerca per nome o indirizzo",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
@@ -1028,25 +1077,116 @@ async def manca_pulizie_scegli_appartamento(update: Update, context: ContextType
 
 async def manca_pulizie_scegli_appartamento_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mostra lista appartamenti per scegliere dove consegnare (da messaggio)"""
+    # Pulsanti GPS e cerca
     keyboard = [
-        [InlineKeyboardButton("🔍 Cerca per nome/indirizzo", callback_data="matpul_cerca_app")]
+        [InlineKeyboardButton("📱 Condividi posizione GPS", callback_data="matpul_chiedi_gps")],
+        [InlineKeyboardButton("🔍 Cerca appartamento", callback_data="matpul_cerca_app")]
     ]
-    
-    appartamenti = db.get_all_appartamenti()
-    for app in appartamenti[:10]:
-        keyboard.append([
-            InlineKeyboardButton(f"🏠 {app['nome']}", callback_data=f"matpul_app_{app['id']}")
-        ])
-    
-    if len(appartamenti) > 10:
-        keyboard.append([InlineKeyboardButton("📋 Mostra tutti", callback_data="matpul_mostra_tutti_app")])
     
     await update.message.reply_text(
         "📍 *Dove vuoi ricevere i materiali?*\n\n"
-        "Scegli l'appartamento dove farti consegnare il materiale:",
+        "• Usa il GPS per vedere quelli vicini (300 m)\n"
+        "• Cerca per nome o indirizzo",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
+    
+    return MANCA_PULIZIE_APPARTAMENTO
+
+
+async def matpul_chiedi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Chiede all'utente di condividere la posizione per materiale pulizie"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Keyboard con bottone di condivisione posizione
+    keyboard = ReplyKeyboardMarkup(
+        [[KeyboardButton("📍 Condividi posizione", request_location=True)]],
+        one_time_keyboard=True,
+        resize_keyboard=True
+    )
+    
+    await query.edit_message_text(
+        "📍 Condividi la tua posizione GPS usando il bottone qui sotto:",
+        parse_mode='Markdown'
+    )
+    
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="👇 Clicca qui:",
+        reply_markup=keyboard
+    )
+    
+    context.user_data['waiting_location_for'] = 'matpul'
+    return MANCA_PULIZIE_APPARTAMENTO
+
+
+async def matpul_ricevi_posizione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Riceve posizione GPS e mostra appartamenti vicini per materiale pulizie"""
+    location = update.message.location
+    user_location = (location.latitude, location.longitude)
+    
+    # Salva posizione nel context per uso successivo
+    context.user_data['last_location'] = user_location
+    context.user_data.pop('waiting_location_for', None)
+    
+    # Ripristina la tastiera del menu principale (sostituisce quella GPS)
+    await update.message.reply_text(
+        "✅ Posizione ricevuta! Cerco appartamenti vicini...",
+        reply_markup=get_main_keyboard(update.effective_user.id)
+    )
+    
+    appartamenti = db.get_all_appartamenti()
+    
+    # Calcola distanze
+    appartamenti_con_distanza = []
+    for app in appartamenti:
+        app_data = dict(app)
+        if app.get('coordinate'):
+            coords = parse_coordinate(app['coordinate'])
+            if coords:
+                app_lat, app_lon = coords
+                user_lat, user_lon = user_location
+                distanza = calcola_distanza_haversine(user_lat, user_lon, app_lat, app_lon)
+                app_data['distanza'] = distanza
+            else:
+                app_data['distanza'] = None
+        else:
+            app_data['distanza'] = None
+        appartamenti_con_distanza.append(app_data)
+    
+    # Ordina per distanza
+    appartamenti_con_distanza.sort(key=lambda x: x['distanza'] if x['distanza'] is not None else float('inf'))
+    
+    # Crea keyboard - solo quelli entro 300m
+    keyboard = []
+    for app in appartamenti_con_distanza[:20]:
+        if app['distanza'] is not None and app['distanza'] <= GPS_TOLERANCE_METERS:
+            dist_str = format_distanza(app['distanza'])
+            label = f"📍 {app['nome']} ({dist_str})"
+            keyboard.append([
+                InlineKeyboardButton(label, callback_data=f"matpul_app_{app['id']}")
+            ])
+    
+    if not keyboard:
+        # Nessun appartamento vicino - offri ricerca
+        keyboard = [
+            [InlineKeyboardButton("🔍 Cerca appartamento", callback_data="matpul_cerca_app")]
+        ]
+        await update.message.reply_text(
+            "😕 *Nessun appartamento trovato entro 300 m*\n\n"
+            "Usa la ricerca per trovare l'appartamento:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    else:
+        keyboard.append([InlineKeyboardButton("🔍 Cerca", callback_data="matpul_cerca_app")])
+        await update.message.reply_text(
+            "📍 *Appartamenti vicini (entro 300 m):*\n\n"
+            "_Seleziona l'appartamento:_",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     
     return MANCA_PULIZIE_APPARTAMENTO
 
@@ -1057,6 +1197,9 @@ async def manca_pulizie_appartamento_callback(update: Update, context: ContextTy
     await query.answer()
     
     data = query.data
+    
+    if data == "matpul_chiedi_gps":
+        return await matpul_chiedi_gps(update, context)
     
     if data == "matpul_cerca_app":
         await query.edit_message_text(
@@ -1118,7 +1261,10 @@ async def manca_pulizie_info_consegna(update: Update, context: ContextTypes.DEFA
     appartamento = context.user_data.get('appartamento_consegna_pulizie', {})
     
     if not appartamento:
-        await update.message.reply_text("❌ Errore: appartamento non trovato")
+        await update.message.reply_text(
+            "❌ Errore: appartamento non trovato",
+            reply_markup=get_main_keyboard(user_id)
+        )
         return ConversationHandler.END
     
     try:
@@ -1131,7 +1277,10 @@ async def manca_pulizie_info_consegna(update: Update, context: ContextTypes.DEFA
         )
         
         if richiesta_id == 0:
-            await update.message.reply_text("❌ Errore durante la creazione della richiesta")
+            await update.message.reply_text(
+                "❌ Errore durante la creazione della richiesta",
+                reply_markup=get_main_keyboard(user_id)
+            )
             return ConversationHandler.END
             
     except ValueError as e:
@@ -1175,6 +1324,12 @@ async def manca_pulizie_info_consegna(update: Update, context: ContextTypes.DEFA
     
     logger.info(f"Richiesta materiale pulizie {richiesta_id}: {user['nome']} @ {appartamento['nome']}")
     
+    # Mostra menu principale con keyboard
+    await update.message.reply_text(
+        "✅ Usa il menu qui sotto per continuare 👇",
+        reply_markup=get_main_keyboard(user_id)
+    )
+    
     return ConversationHandler.END
 
 
@@ -1188,26 +1343,116 @@ async def manca_appartamento(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Reset
     context.user_data['tipo_segnalazione'] = 'appartamento'
     
-    # Prima scegliere appartamento, poi prodotti
+    # Pulsanti GPS e cerca
     keyboard = [
-        [InlineKeyboardButton("🔍 Cerca per nome/indirizzo", callback_data="matapp_cerca_app")]
+        [InlineKeyboardButton("📱 Condividi posizione GPS", callback_data="matapp_chiedi_gps")],
+        [InlineKeyboardButton("🔍 Cerca appartamento", callback_data="matapp_cerca_app")]
     ]
-    
-    appartamenti = db.get_all_appartamenti()
-    for app in appartamenti[:10]:
-        keyboard.append([
-            InlineKeyboardButton(f"🏠 {app['nome']}", callback_data=f"matapp_app_{app['id']}")
-        ])
-    
-    if len(appartamenti) > 10:
-        keyboard.append([InlineKeyboardButton("📋 Mostra tutti", callback_data="matapp_mostra_tutti_app")])
     
     await update.message.reply_text(
         "🏠 *Manca Qualcosa - Appartamento*\n\n"
-        "Seleziona l'appartamento dove manca qualcosa:",
+        "• Usa il GPS per vedere quelli vicini (300 m)\n"
+        "• Cerca per nome o indirizzo",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
+    
+    return MANCA_APP_SELEZIONE
+
+
+async def matapp_chiedi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Chiede all'utente di condividere la posizione per manca appartamento"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Keyboard con bottone di condivisione posizione
+    keyboard = ReplyKeyboardMarkup(
+        [[KeyboardButton("📍 Condividi posizione", request_location=True)]],
+        one_time_keyboard=True,
+        resize_keyboard=True
+    )
+    
+    await query.edit_message_text(
+        "📍 Condividi la tua posizione GPS usando il bottone qui sotto:",
+        parse_mode='Markdown'
+    )
+    
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="👇 Clicca qui:",
+        reply_markup=keyboard
+    )
+    
+    context.user_data['waiting_location_for'] = 'matapp'
+    return MANCA_APP_SELEZIONE
+
+
+async def matapp_ricevi_posizione(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Riceve posizione GPS e mostra appartamenti vicini per manca appartamento"""
+    location = update.message.location
+    user_location = (location.latitude, location.longitude)
+    
+    # Salva posizione nel context per uso successivo
+    context.user_data['last_location'] = user_location
+    context.user_data.pop('waiting_location_for', None)
+    
+    # Ripristina la tastiera del menu principale (sostituisce quella GPS)
+    await update.message.reply_text(
+        "✅ Posizione ricevuta! Cerco appartamenti vicini...",
+        reply_markup=get_main_keyboard(update.effective_user.id)
+    )
+    
+    appartamenti = db.get_all_appartamenti()
+    
+    # Calcola distanze
+    appartamenti_con_distanza = []
+    for app in appartamenti:
+        app_data = dict(app)
+        if app.get('coordinate'):
+            coords = parse_coordinate(app['coordinate'])
+            if coords:
+                app_lat, app_lon = coords
+                user_lat, user_lon = user_location
+                distanza = calcola_distanza_haversine(user_lat, user_lon, app_lat, app_lon)
+                app_data['distanza'] = distanza
+            else:
+                app_data['distanza'] = None
+        else:
+            app_data['distanza'] = None
+        appartamenti_con_distanza.append(app_data)
+    
+    # Ordina per distanza
+    appartamenti_con_distanza.sort(key=lambda x: x['distanza'] if x['distanza'] is not None else float('inf'))
+    
+    # Crea keyboard - solo quelli entro 300m
+    keyboard = []
+    for app in appartamenti_con_distanza[:20]:
+        if app['distanza'] is not None and app['distanza'] <= GPS_TOLERANCE_METERS:
+            dist_str = format_distanza(app['distanza'])
+            label = f"📍 {app['nome']} ({dist_str})"
+            keyboard.append([
+                InlineKeyboardButton(label, callback_data=f"matapp_app_{app['id']}")
+            ])
+    
+    if not keyboard:
+        # Nessun appartamento vicino - offri ricerca
+        keyboard = [
+            [InlineKeyboardButton("🔍 Cerca appartamento", callback_data="matapp_cerca_app")]
+        ]
+        await update.message.reply_text(
+            "😕 *Nessun appartamento trovato entro 300 m*\n\n"
+            "Usa la ricerca per trovare l'appartamento:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    else:
+        keyboard.append([InlineKeyboardButton("🔍 Cerca", callback_data="matapp_cerca_app")])
+        await update.message.reply_text(
+            "📍 *Appartamenti vicini (entro 300 m):*\n\n"
+            "_Seleziona l'appartamento:_",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
     
     return MANCA_APP_SELEZIONE
 
@@ -1218,6 +1463,9 @@ async def manca_app_selezione_callback(update: Update, context: ContextTypes.DEF
     await query.answer()
     
     data = query.data
+    
+    if data == "matapp_chiedi_gps":
+        return await matapp_chiedi_gps(update, context)
     
     if data == "matapp_cerca_app":
         await query.edit_message_text(
@@ -1452,7 +1700,10 @@ async def manca_app_completa_msg(update: Update, context: ContextTypes.DEFAULT_T
         )
         
         if richiesta_id == 0:
-            await update.message.reply_text("❌ Errore durante la creazione della richiesta")
+            await update.message.reply_text(
+                "❌ Errore durante la creazione della richiesta",
+                reply_markup=get_main_keyboard(user_id)
+            )
             return ConversationHandler.END
             
     except ValueError as e:
@@ -1583,7 +1834,11 @@ async def chiedi_allegati_liberi(update: Update, context: ContextTypes.DEFAULT_T
     text += "• 📄 Documenti\n\n"
     text += "_Invia semplicemente il file, verrà salvato automaticamente._"
     
-    await update.message.reply_text(text, parse_mode='Markdown')
+    await update.message.reply_text(
+        text, 
+        parse_mode='Markdown',
+        reply_markup=get_main_keyboard(update.effective_user.id)
+    )
     
     # Non cambia stato - rimane dove si trova
     return ConversationHandler.END
@@ -1609,16 +1864,17 @@ async def ricevi_allegati_liberi(update: Update, context: ContextTypes.DEFAULT_T
     if not appartamento:
         logger.info(f"Allegato libero senza turno attivo - chiedo appartamento a user {user_id}")
         
+        # Solo GPS e ricerca - niente lista appartamenti iniziale
         keyboard = [
             [InlineKeyboardButton("📱 Condividi posizione GPS", callback_data="allega_chiedi_gps")],
-            [InlineKeyboardButton("🔍 Cerca per nome/indirizzo", callback_data="cerca_appartamento_allegato")],
-            [InlineKeyboardButton("📋 Seleziona dall'elenco", callback_data="allega_scegli_app")]
+            [InlineKeyboardButton("🔍 Cerca appartamento", callback_data="cerca_appartamento_allegato")]
         ]
         
         await update.message.reply_text(
             "📍 *Di quale appartamento si tratta?*\n\n"
             "L'allegato verrà salvato nella cartella dell'appartamento.\n\n"
-            "💡 Scegli come selezionare l'appartamento:",
+            "• Usa il GPS per vedere quelli vicini (300 m)\n"
+            "• Cerca per nome o indirizzo",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
@@ -1805,7 +2061,7 @@ async def avvia_ricerca_appartamento(update: Update, context: ContextTypes.DEFAU
 
 
 async def ricerca_appartamento_testo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ricerca appartamenti per testo e mostra risultati"""
+    """Ricerca appartamenti per testo e mostra risultati come pulsanti"""
     testo_ricerca = update.message.text.strip().lower()
     
     if len(testo_ricerca) < 2:
@@ -1828,46 +2084,15 @@ async def ricerca_appartamento_testo(update: Update, context: ContextTypes.DEFAU
             risultati.append(app)
     
     if not risultati:
-        if ricerca_context == 'allegato':
-            keyboard = [
-                [InlineKeyboardButton("🔍 Nuova ricerca", callback_data="cerca_appartamento_allegato")],
-                [InlineKeyboardButton("📋 Mostra tutti", callback_data="allega_scegli_app")],
-                [InlineKeyboardButton("❌ Annulla", callback_data="annulla")]
-            ]
-        elif ricerca_context == 'segnalazione':
-            keyboard = [
-                [InlineKeyboardButton("🔍 Nuova ricerca", callback_data="segnala_cerca_appartamento")],
-                [InlineKeyboardButton("📋 Mostra tutti", callback_data="segnala_mostra_tutti")],
-                [InlineKeyboardButton("❌ Annulla", callback_data="annulla")]
-            ]
-        elif ricerca_context == 'matpul':
-            keyboard = [
-                [InlineKeyboardButton("🔍 Nuova ricerca", callback_data="matpul_cerca_app")],
-                [InlineKeyboardButton("📋 Mostra tutti", callback_data="matpul_mostra_tutti_app")],
-                [InlineKeyboardButton("❌ Annulla", callback_data="matpul_annulla")]
-            ]
-        elif ricerca_context == 'matapp':
-            keyboard = [
-                [InlineKeyboardButton("🔍 Nuova ricerca", callback_data="matapp_cerca_app")],
-                [InlineKeyboardButton("📋 Mostra tutti", callback_data="matapp_mostra_tutti_app")],
-                [InlineKeyboardButton("❌ Annulla", callback_data="matapp_annulla")]
-            ]
-        else:
-            keyboard = [
-                [InlineKeyboardButton("🔍 Nuova ricerca", callback_data="cerca_appartamento")],
-                [InlineKeyboardButton("📋 Mostra tutti", callback_data="mostra_tutti")],
-                [InlineKeyboardButton("❌ Annulla", callback_data="annulla")]
-            ]
-        
         await update.message.reply_text(
             f"😕 Nessun appartamento trovato per: *{testo_ricerca}*\n\n"
-            "Prova con altri termini o visualizza l'elenco completo.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
+            "Scrivi un altro nome o parte dell'indirizzo.\n"
+            "_Oppure scrivi /annulla per annullare._",
             parse_mode='Markdown'
         )
         return RICERCA_APPARTAMENTO
     
-    # Mostra risultati
+    # Mostra risultati come pulsanti
     keyboard = []
     for app in risultati:
         if ricerca_context == 'allegato':
@@ -1906,25 +2131,18 @@ async def ricerca_appartamento_testo(update: Update, context: ContextTypes.DEFAU
                 )
             ])
     
+    # Aggiungi pulsante per nuova ricerca
+    keyboard.append([InlineKeyboardButton("🔍 Nuova ricerca", callback_data="cerca_appartamento")])
+    
     if ricerca_context == 'allegato':
-        keyboard.append([InlineKeyboardButton("🔍 Nuova ricerca", callback_data="cerca_appartamento_allegato")])
-        keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="annulla")])
         next_state = ConversationHandler.END
     elif ricerca_context == 'segnalazione':
-        keyboard.append([InlineKeyboardButton("🔍 Nuova ricerca", callback_data="segnala_cerca_appartamento")])
-        keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="annulla")])
         next_state = SEGNALA_PRODOTTI
     elif ricerca_context == 'matpul':
-        keyboard.append([InlineKeyboardButton("🔍 Nuova ricerca", callback_data="matpul_cerca_app")])
-        keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="matpul_annulla")])
         next_state = MANCA_PULIZIE_APPARTAMENTO
     elif ricerca_context == 'matapp':
-        keyboard.append([InlineKeyboardButton("🔍 Nuova ricerca", callback_data="matapp_cerca_app")])
-        keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="matapp_annulla")])
         next_state = MANCA_APP_SELEZIONE
     else:
-        keyboard.append([InlineKeyboardButton("🔍 Nuova ricerca", callback_data="cerca_appartamento")])
-        keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="annulla")])
         next_state = SELEZIONE_IMMOBILE
     
     await update.message.reply_text(
@@ -2001,16 +2219,29 @@ async def allega_chiedi_gps(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def ricevi_location_per_allegato(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler globale per location quando si cerca appartamento per allegato"""
-    if context.user_data.get('waiting_location_for') != 'allegato':
-        return  # Non gestire se non è per allegato
+    """Handler globale per location quando si cerca appartamento (allegato, matpul, matapp)"""
+    waiting_for = context.user_data.get('waiting_location_for')
     
-    location = update.message.location
-    user_location = (location.latitude, location.longitude)
+    if waiting_for == 'allegato':
+        location = update.message.location
+        user_location = (location.latitude, location.longitude)
+        
+        context.user_data.pop('waiting_location_for', None)
+        # Ripristina la tastiera del menu principale (sostituisce quella GPS)
+        await update.message.reply_text(
+            "✅ Posizione ricevuta! Cerco appartamenti vicini...",
+            reply_markup=get_main_keyboard(update.effective_user.id)
+        )
+        await mostra_appartamenti_per_allegato_gps(update, context, user_location)
     
-    context.user_data.pop('waiting_location_for', None)
-    await update.message.reply_text("✅ Posizione ricevuta! Cerco appartamenti vicini...")
-    await mostra_appartamenti_per_allegato_gps(update, context, user_location)
+    elif waiting_for == 'matpul':
+        return await matpul_ricevi_posizione(update, context)
+    
+    elif waiting_for == 'matapp':
+        return await matapp_ricevi_posizione(update, context)
+    
+    # Se non è per nessuno dei contesti, ignora
+    return
 
 
 async def ricevi_testo_ricerca_allegato(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2046,25 +2277,34 @@ async def mostra_appartamenti_per_allegato_gps(update: Update, context: ContextT
     # Ordina per distanza
     appartamenti_con_distanza.sort(key=lambda x: x['distanza'] if x['distanza'] is not None else float('inf'))
     
-    # Crea keyboard
+    # Crea keyboard - solo quelli entro 300m
     keyboard = []
     for app in appartamenti_con_distanza[:20]:
-        label = f"🏠 {app['nome']}"
-        if app['distanza'] is not None:
+        if app['distanza'] is not None and app['distanza'] <= GPS_TOLERANCE_METERS:
             dist_str = format_distanza(app['distanza'])
-            label += f" ({dist_str})"
-            if app['distanza'] <= GPS_TOLERANCE_METERS:
-                label = f"📍 {app['nome']} ({dist_str})"
+            label = f"📍 {app['nome']} ({dist_str})"
+            keyboard.append([
+                InlineKeyboardButton(label, callback_data=f"allega_app_{app['id']}")
+            ])
+    
+    if not keyboard:
+        # Nessun appartamento vicino - offri ricerca
+        keyboard = [
+            [InlineKeyboardButton("🔍 Cerca appartamento", callback_data="cerca_appartamento_allegato")]
+        ]
+        await update.message.reply_text(
+            "😕 *Nessun appartamento trovato entro 300 m*\n\n"
+            "Usa la ricerca per trovare l'appartamento:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+    else:
+        keyboard.append([InlineKeyboardButton("🔍 Cerca", callback_data="cerca_appartamento_allegato")])
+        keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="annulla")])
         
-        keyboard.append([
-            InlineKeyboardButton(label, callback_data=f"allega_app_{app['id']}")
-        ])
-    
-    keyboard.append([InlineKeyboardButton("❌ Annulla", callback_data="annulla")])
-    
-    await update.message.reply_text(
-        "📍 *Appartamenti vicini:*\n\n"
-        "_Seleziona l'appartamento:_",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
-    )
+        await update.message.reply_text(
+            "📍 *Appartamenti vicini (entro 300 m):*\n\n"
+            "_Seleziona l'appartamento:_",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )

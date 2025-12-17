@@ -68,7 +68,12 @@ from funzioni.user_handlers import (
     manca_app_prodotti_callback,
     manca_app_testo_manuale,
     ricevi_location_per_allegato,
-    ricevi_testo_ricerca_allegato
+    ricevi_testo_ricerca_allegato,
+    # GPS handlers per materiale pulizie e appartamento
+    matpul_chiedi_gps,
+    matpul_ricevi_posizione,
+    matapp_chiedi_gps,
+    matapp_ricevi_posizione
 )
 
 from funzioni.admin_handlers import (
@@ -76,6 +81,7 @@ from funzioni.admin_handlers import (
     admin_callback_router,
     mostra_richieste_in_sospeso,
     aggiorna_richieste_callback,
+    aggiorna_richieste_full_callback,
     admin_turni_in_corso,
     admin_turni_finiti,
     admin_turni_menu,
@@ -361,6 +367,7 @@ def main():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, manca_pulizie_testo_manuale)
             ],
             MANCA_PULIZIE_APPARTAMENTO: [
+                MessageHandler(filters.LOCATION, matpul_ricevi_posizione),
                 CallbackQueryHandler(manca_pulizie_appartamento_callback)
             ],
             MANCA_PULIZIE_INFO_CONSEGNA: [
@@ -369,6 +376,7 @@ def main():
             ],
             # Nuovi stati per Manca Appartamento
             MANCA_APP_SELEZIONE: [
+                MessageHandler(filters.LOCATION, matapp_ricevi_posizione),
                 CallbackQueryHandler(manca_app_selezione_callback)
             ],
             MANCA_APP_PRODOTTI: [

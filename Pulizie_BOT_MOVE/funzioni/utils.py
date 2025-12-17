@@ -316,6 +316,110 @@ def escape_markdown(text: str) -> str:
     return text
 
 
+# ==================== UX HELPERS - GESTIONE MESSAGGI ====================
+
+async def delete_message_safe(context, chat_id: int, message_id: int):
+    """Cancella un messaggio in modo sicuro, ignorando errori"""
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        return True
+    except Exception:
+        return False
+
+
+async def delete_previous_messages(context, chat_id: int, count: int = 1):
+    """
+    Cancella gli ultimi N messaggi salvati in context.user_data['messages_to_delete'].
+    Usare per pulire messaggi obsoleti dopo un'azione.
+    """
+    messages = context.user_data.get('messages_to_delete', [])
+    deleted = 0
+    for msg_id in messages[-count:]:
+        if await delete_message_safe(context, chat_id, msg_id):
+            deleted += 1
+    # Rimuovi i messaggi cancellati dalla lista
+    context.user_data['messages_to_delete'] = messages[:-count] if count < len(messages) else []
+    return deleted
+
+
+def track_message(context, message):
+    """
+    Salva l'ID di un messaggio per poterlo cancellare dopo.
+    Chiamare dopo ogni reply_text/send_message.
+    """
+    if 'messages_to_delete' not in context.user_data:
+        context.user_data['messages_to_delete'] = []
+    context.user_data['messages_to_delete'].append(message.message_id)
+    # Mantieni solo gli ultimi 20 messaggi
+    if len(context.user_data['messages_to_delete']) > 20:
+        context.user_data['messages_to_delete'] = context.user_data['messages_to_delete'][-20:]
+
+
+async def send_and_track(update, context, text: str, reply_markup=None, parse_mode='Markdown', delete_previous: bool = True):
+    """
+    Invia un messaggio, lo traccia, e opzionalmente cancella il precedente.
+    Questo mantiene la chat pulita e l'utente vede sempre l'ultimo messaggio.
+    
+    Args:
+        update: Update di Telegram
+        context: Context di Telegram
+        text: Testo del messaggio
+        reply_markup: Tastiera inline o reply
+        parse_mode: Formato del testo
+        delete_previous: Se True, cancella il messaggio precedente tracciato
+    
+    Returns:
+        Il messaggio inviato
+    """
+    chat_id = update.effective_chat.id
+    
+    # Cancella messaggio precedente se richiesto
+    if delete_previous:
+        await delete_previous_messages(context, chat_id, count=1)
+    
+    # Invia nuovo messaggio
+    if update.callback_query:
+        message = await context.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode
+        )
+    else:
+        message = await update.message.reply_text(
+            text=text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode
+        )
+    
+    # Traccia il messaggio
+    track_message(context, message)
+    
+    return message
+
+
+async def edit_or_send(update, context, text: str, reply_markup=None, parse_mode='Markdown'):
+    """
+    Se è un callback query, modifica il messaggio esistente.
+    Altrimenti invia un nuovo messaggio.
+    Questo evita l'accumulo di messaggi.
+    """
+    if update.callback_query:
+        try:
+            await update.callback_query.edit_message_text(
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode
+            )
+            return update.callback_query.message
+        except Exception:
+            # Se fallisce edit, invia nuovo messaggio
+            pass
+    
+    # Fallback: invia nuovo messaggio
+    return await send_and_track(update, context, text, reply_markup, parse_mode)
+
+
 if __name__ == '__main__':
     # Test funzioni
     print("📅 Test date:")
